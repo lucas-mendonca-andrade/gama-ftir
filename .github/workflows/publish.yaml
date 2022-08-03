@@ -20,6 +20,10 @@ on:
       suffix:
         required: false
         type: string
+      i-know-what-i-am-doing:
+        required: true
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -46,6 +50,7 @@ jobs:
           name: dist-folder
           path: dist
           retention-days: 1
+          if-no-files-found: error
 
   test-install:
     needs: build
@@ -62,6 +67,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: dist-folder
+          path: dist
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
