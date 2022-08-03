@@ -1,11 +1,25 @@
 name: Publish
 
 on:
+  push:
   release:
     types:
       - published
 
   workflow_dispatch:
+    inputs:
+      year:
+        required: true
+        type: number
+      macro:
+        required: true
+        type: number
+      micro:
+        required: true
+        type: number
+      suffix:
+        required: false
+        type: string
 
 jobs:
   build:
@@ -57,6 +71,8 @@ jobs:
       - name: Install Wheel
         shell: bash
         run: |
+          ls -lah
+          ls -lah dist
           python -m pip install dist/*.whl
 
       - name: Run example
