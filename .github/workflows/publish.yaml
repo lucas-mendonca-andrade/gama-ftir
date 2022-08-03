@@ -85,8 +85,10 @@ jobs:
         run: |
           curl https://raw.githubusercontent.com/PGijsbers/gama/master/examples/classification_example.py > example.py
           # First reduce runtime for 3 minutes to 1 minute
-          sed -i '' "s/180/60/" example.py
-          sed -i '' "s/3/1/" example.py
+          ls 
+          cat example.py
+          sed -i.bak "s/180/60/" example.py
+          sed -i.bak "s/3/1/" example.py
           python example.py
 
   publish:
