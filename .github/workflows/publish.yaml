@@ -99,6 +99,7 @@ jobs:
         uses: actions/download-artifact@v3
         with:
           name: dist-folder
+          path: dist
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v4
