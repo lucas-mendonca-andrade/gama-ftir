@@ -1,7 +1,6 @@
-name: pytest
+name: Test --pre
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "00 0 * * 1"
 
@@ -21,5 +20,7 @@ jobs:
         uses: ./.github/actions/pytest
         with:
           path: tests/unit
-          os: ${{ matrix.os }}
           python-version: ${{ matrix.python-version }}
+          use-cache: false
+          pip-args: "--pre"
+          pytest-args: "-W error -W ignore::sklearn.exceptions.ConvergenceWarning"

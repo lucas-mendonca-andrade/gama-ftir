@@ -44,7 +44,6 @@ vis = [
     "dash-bootstrap-components",
     "visdcc",
 ]
-
 [tool.setuptools.dynamic]
 version = {attr = "gama.__version__.__version__"}
 
@@ -59,3 +58,13 @@ documentation = "https://openml-labs.github.io/gama/"
 [project.scripts]
 gama = "gama.utilities.cli:main"
 gamadash = "gama.dashboard.app:main"
+
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error",
+    "ignore::sklearn.exceptions.ConvergenceWarning",
+    "ignore::PendingDeprecationWarning",
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]
