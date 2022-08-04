@@ -30,7 +30,7 @@ jobs:
       - name: Clone GH-Pages
         if: ${{ github.event_name == 'push' }}
         run: |
-          git clone https://github.com/openml-labs/gama.git --single-branch --branch gh-pages docs/build/
+          git clone https://github.com/pgijsbers/gama.git --single-branch --branch gh-pages docs/build/
 
       - name: Build Docs
         run: |
