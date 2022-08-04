@@ -29,7 +29,7 @@ jobs:
 
       - name: Clone GH-Pages
         if: github.event_name != "pull_request"
-        runs: |
+        run: |
           git clone https://github.com/openml-labs/gama.git --single-branch --branch gh-pages docs/build/${{ github.ref }}
 
       - name: Build Docs
@@ -38,7 +38,7 @@ jobs:
 
       - name: Push GH-Pages
         if: github.event_name != "pull_request"
-        runs: |
+        run: |
           cd docs/build
           git config user.name github-actions
           git config user.email github-actions@github.com
