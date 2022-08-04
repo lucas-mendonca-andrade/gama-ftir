@@ -30,11 +30,11 @@ jobs:
       - name: Clone GH-Pages
         if: github.event_name != "pull_request"
         run: |
-          git clone https://github.com/openml-labs/gama.git --single-branch --branch gh-pages docs/build/${{ github.ref }}
+          git clone https://github.com/openml-labs/gama.git --single-branch --branch gh-pages docs/build/
 
       - name: Build Docs
         run: |
-          sphinx-build docs/source docs/build/${{ }}
+          sphinx-build docs/source docs/build/${{ github.ref }}
 
       - name: Push GH-Pages
         if: github.event_name != "pull_request"
