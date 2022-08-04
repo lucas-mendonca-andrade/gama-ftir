@@ -28,7 +28,7 @@ jobs:
           pip install ".[doc]"
 
       - name: Clone GH-Pages
-        if: github.event_name != "pull_request"
+        if: github.event_name != pull_request
         run: |
           git clone https://github.com/openml-labs/gama.git --single-branch --branch gh-pages docs/build/
 
@@ -37,7 +37,7 @@ jobs:
           sphinx-build docs/source docs/build/${{ github.ref }}
 
       - name: Push GH-Pages
-        if: github.event_name != "pull_request"
+        if: github.event_name != pull_request
         run: |
           cd docs/build
           git config user.name github-actions
