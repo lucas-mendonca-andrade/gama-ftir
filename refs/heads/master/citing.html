@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Papers &mdash; gama 21.0.1.dev documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+    <link rel="shortcut icon" href="_static/Color-Transparent.svg"/>
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="_static/doctools.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Contributing" href="contributing/index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html">
+            <img src="_static/Logo-on-white-text-on-transparent.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                21.0.1.dev
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="user_guide/index.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="advanced_guide/index.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="benchmark.html">Benchmark Results</a></li>
+<li class="toctree-l1"><a class="reference internal" href="releases.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="contributing/index.html">Contributing</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Papers</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#gama-a-general-automated-machine-learning-assistant">GAMA: a General Automated Machine learning Assistant</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#up-to-date-listings">Up-to-date Listings</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#gama-genetic-automated-machine-learning-assistant">GAMA: Genetic Automated Machine learning Assistant</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#listings">Listings</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">gama</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>Papers</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/citing.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="papers">
+<h1>Papers<a class="headerlink" href="#papers" title="Permalink to this heading"></a></h1>
+<p>This page contains bibtex entries for each paper, as well as up-to-date code listings from each paper.
+Unless you want to reference a specific paper, when citing GAMA please cite the <a class="reference external" href="http://joss.theoj.org/papers/10.21105/joss.01132">JOSS article</a>.</p>
+<section id="gama-a-general-automated-machine-learning-assistant">
+<h2>GAMA: a General Automated Machine learning Assistant<a class="headerlink" href="#gama-a-general-automated-machine-learning-assistant" title="Permalink to this heading"></a></h2>
+<p>Features GAMA 20.2.1</p>
+<p>Bibtex will be added after publication.</p>
+<section id="up-to-date-listings">
+<h3>Up-to-date Listings<a class="headerlink" href="#up-to-date-listings" title="Permalink to this heading"></a></h3>
+<p>Listing 1:</p>
+<div class="highlight-Python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">gama</span> <span class="kn">import</span> <span class="n">GamaClassifier</span>
+<span class="kn">from</span> <span class="nn">gama.search_methods</span> <span class="kn">import</span> <span class="n">AsynchronousSuccessiveHalving</span>
+<span class="kn">from</span> <span class="nn">gama.postprocessing</span> <span class="kn">import</span> <span class="n">EnsemblePostProcessing</span>
+
+<span class="n">automl</span> <span class="o">=</span> <span class="n">GamaClassifier</span><span class="p">(</span>
+    <span class="n">search</span><span class="o">=</span><span class="n">AsynchronousSuccessiveHalving</span><span class="p">(),</span>
+    <span class="n">post_processing</span><span class="o">=</span><span class="n">EnsemblePostProcessing</span><span class="p">()</span>
+<span class="p">)</span>
+<span class="n">automl</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<span class="n">automl</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X_test</span><span class="p">)</span>
+<span class="n">automl</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_test</span><span class="p">,</span> <span class="n">y_test</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="gama-genetic-automated-machine-learning-assistant">
+<h2>GAMA: Genetic Automated Machine learning Assistant<a class="headerlink" href="#gama-genetic-automated-machine-learning-assistant" title="Permalink to this heading"></a></h2>
+<p>Features GAMA 19.01.0</p>
+<div class="highlight-latex notranslate"><div class="highlight"><pre><span></span>@article<span class="nb">{</span>Gijsbers2019,
+  doi = <span class="nb">{</span>10.21105/joss.01132<span class="nb">}</span>,
+  url = <span class="nb">{</span>https://doi.org/10.21105/joss.01132<span class="nb">}</span>,
+  year  = <span class="nb">{</span>2019<span class="nb">}</span>,
+  month = <span class="nb">{</span>jan<span class="nb">}</span>,
+  publisher = <span class="nb">{</span>The Open Journal<span class="nb">}</span>,
+  volume = <span class="nb">{</span>4<span class="nb">}</span>,
+  number = <span class="nb">{</span>33<span class="nb">}</span>,
+  pages = <span class="nb">{</span>1132<span class="nb">}</span>,
+  author = <span class="nb">{</span>Pieter Gijsbers and Joaquin Vanschoren<span class="nb">}</span>,
+  title = <span class="nb">{{</span>GAMA<span class="nb">}</span>: Genetic Automated Machine learning Assistant<span class="nb">}</span>,
+  journal = <span class="nb">{</span>Journal of Open Source Software<span class="nb">}</span>
+<span class="nb">}</span>
+</pre></div>
+</div>
+<section id="listings">
+<h3>Listings<a class="headerlink" href="#listings" title="Permalink to this heading"></a></h3>
+<p>This paper features no listings.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="contributing/index.html" class="btn btn-neutral float-left" title="Contributing" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2022, Pieter Gijsbers.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

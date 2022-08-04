@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>gama.utilities.generic.async_evaluator &mdash; gama 21.0.1.dev documentation</title>
+      <link rel="stylesheet" href="../../../../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../../../../_static/css/theme.css" type="text/css" />
+    <link rel="shortcut icon" href="../../../../_static/Color-Transparent.svg"/>
+  <!--[if lt IE 9]>
+    <script src="../../../../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script data-url_root="../../../../" id="documentation_options" src="../../../../_static/documentation_options.js"></script>
+        <script src="../../../../_static/jquery.js"></script>
+        <script src="../../../../_static/underscore.js"></script>
+        <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js"></script>
+        <script src="../../../../_static/doctools.js"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../../../../index.html">
+            <img src="../../../../_static/Logo-on-white-text-on-transparent.png" class="logo" alt="Logo"/>
+          </a>
+              <div class="version">
+                21.0.1.dev
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../user_guide/index.html">User Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../advanced_guide/index.html">Advanced Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api/index.html">API</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../benchmark.html">Benchmark Results</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../releases.html">Release Notes</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../contributing/index.html">Contributing</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../citing.html">Papers</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">gama</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="../../../index.html">Module code</a> &raquo;</li>
+      <li>gama.utilities.generic.async_evaluator</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for gama.utilities.generic.async_evaluator</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">I don&#39;t want to be reinventing the wheel but I can&#39;t find a satisfying implementation.</span>
+<span class="sd">I want to be able to execute arbitrary functions asynchronously on a different process.</span>
+<span class="sd">Any ongoing subprocesses must immediately be able to be terminated without errors.</span>
+<span class="sd">Results of cancelled subprocesses may be ignored.</span>
+
+<span class="sd">`concurrent.futures.ProcessPoolExecutor` gets very close to the desired implementation,</span>
+<span class="sd">but it has issues:</span>
+<span class="sd">    - by default it waits for subprocesses to close on __exit__.</span>
+<span class="sd">      Unfortunately it is possible the subprocesses can be running non-Python code,</span>
+<span class="sd">      e.g. a C implementation of SVC whose subprocess won&#39;t end until fit is complete.</span>
+<span class="sd">    - even if that is overwritten and no wait is performed,</span>
+<span class="sd">      the subprocess will raise an error when it is done.</span>
+<span class="sd">      Though that does not hinder the execution of the program,</span>
+<span class="sd">      I don&#39;t want errors for expected behavior.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">gc</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">multiprocessing</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">psutil</span>
+<span class="kn">import</span> <span class="nn">queue</span>
+<span class="kn">import</span> <span class="nn">struct</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">from</span> <span class="nn">typing</span> <span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span>
+<span class="kn">import</span> <span class="nn">uuid</span>
+
+<span class="kn">from</span> <span class="nn">psutil</span> <span class="kn">import</span> <span class="n">NoSuchProcess</span>
+
+
+<span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="vm">__name__</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">AsyncFuture</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Reference to a function call executed on a different process.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">id</span> <span class="o">=</span> <span class="n">uuid</span><span class="o">.</span><span class="n">uuid4</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fn</span> <span class="o">=</span> <span class="n">fn</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">args</span> <span class="o">=</span> <span class="n">args</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span> <span class="o">=</span> <span class="n">kwargs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">result</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exception</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">traceback</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">execute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">extra_kwargs</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Execute the function call `fn(*args, **kwargs)` and record results.&quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Don&#39;t update self.kwargs, as it will be pickled back to the main process</span>
+            <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">kwargs</span><span class="p">,</span> <span class="o">**</span><span class="n">extra_kwargs</span><span class="p">}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fn</span><span class="p">(</span><span class="o">*</span><span class="bp">self</span><span class="o">.</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">exception</span> <span class="o">=</span> <span class="n">e</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">traceback</span> <span class="o">=</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_exc</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="AsyncEvaluator"><a class="viewcode-back" href="../../../../api/index.html#gama.utilities.generic.async_evaluator.AsyncEvaluator">[docs]</a><span class="k">class</span> <span class="nc">AsyncEvaluator</span><span class="p">:</span>
+    <span class="sd">&quot;&quot;&quot;Manages subprocesses on which arbitrary functions can be evaluated.</span>
+
+<span class="sd">    The function and all its arguments must be picklable.</span>
+<span class="sd">    Using the same AsyncEvaluator in two different contexts raises a `RuntimeError`.</span>
+
+<span class="sd">    defaults: Dict, optional (default=None)</span>
+<span class="sd">        Default parameter values shared between all submit calls.</span>
+<span class="sd">        This allows these defaults to be transferred only once per process,</span>
+<span class="sd">        instead of twice per call (to and from the subprocess).</span>
+<span class="sd">        Only supports keyword arguments.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">defaults</span><span class="p">:</span> <span class="n">Dict</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">def</span> <span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">n_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="n">memory_limit_mb</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">logfile</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">wait_time_before_forced_shutdown</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        n_workers : int (default=1)</span>
+<span class="sd">            Maximum number of subprocesses to run for parallel evaluations.</span>
+<span class="sd">        memory_limit_mb : int, optional (default=None)</span>
+<span class="sd">            The maximum number of megabytes that this process and its subprocesses</span>
+<span class="sd">            may use in total. If None, no limit is enforced.</span>
+<span class="sd">            There is no guarantee the limit is not violated.</span>
+<span class="sd">        logfile : str, optional (default=None)</span>
+<span class="sd">            If set, recorded resource usage will be written to this file.</span>
+<span class="sd">        wait_time_before_forced_shutdown : int (default=10)</span>
+<span class="sd">            Number of seconds to wait between asking the worker processes to shut down</span>
+<span class="sd">            and terminating them forcefully if they failed to do so.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_has_entered</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">futures</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">uuid</span><span class="o">.</span><span class="n">UUID</span><span class="p">,</span> <span class="n">AsyncFuture</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_n_jobs</span> <span class="o">=</span> <span class="n">n_workers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_memory_limit_mb</span> <span class="o">=</span> <span class="n">memory_limit_mb</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mem_violations</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mem_behaved</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_logfile</span> <span class="o">=</span> <span class="n">logfile</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wait_time_before_forced_shutdown</span> <span class="o">=</span> <span class="n">wait_time_before_forced_shutdown</span>
+
+        <span class="c1"># queue.qsize() may raise an error on Unix-like,</span>
+        <span class="c1"># more accurate results may be obtained by using a multiprocessing.Value</span>
+        <span class="c1"># but it adds a point of failure and I hope to replace this async</span>
+        <span class="c1"># module soon, so we use this approximation.</span>
+        <span class="c1"># Since we assume all workers will take up a job, we start below 0:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">job_queue_size</span> <span class="o">=</span> <span class="o">-</span><span class="n">n_workers</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_input</span><span class="p">:</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_output</span><span class="p">:</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_command</span><span class="p">:</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_main_process</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">(</span><span class="n">pid</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_has_entered</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
+                <span class="s2">&quot;You can not use the same AsyncEvaluator in two different contexts.&quot;</span>
+            <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_has_entered</span> <span class="o">=</span> <span class="kc">True</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_input</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_output</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span><span class="p">()</span>
+
+        <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Process </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_main_process</span><span class="o">.</span><span class="n">pid</span><span class="si">}</span><span class="s2"> starting </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_n_jobs</span><span class="si">}</span><span class="s2"> subprocesses.&quot;</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_n_jobs</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_start_worker_process</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_log_memory_usage</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="fm">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">exc_type</span><span class="p">,</span> <span class="n">exc_val</span><span class="p">,</span> <span class="n">exc_tb</span><span class="p">):</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Signaling </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="p">)</span><span class="si">}</span><span class="s2"> subprocesses to stop.&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_command</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="s2">&quot;stop&quot;</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_wait_time_before_forced_shutdown</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_command</span><span class="o">.</span><span class="n">empty</span><span class="p">():</span>
+                <span class="k">break</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">clear_queue</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_input</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">clear_queue</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_output</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">clear_queue</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_command</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">job_queue_size</span> <span class="o">=</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">_n_jobs</span>
+
+        <span class="c1"># Even processes which &#39;stop&#39; need to be &#39;waited&#39;,</span>
+        <span class="c1"># otherwise they become zombie processes.</span>
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stop_worker_process</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">except</span> <span class="n">psutil</span><span class="o">.</span><span class="n">NoSuchProcess</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="k">return</span> <span class="kc">False</span>
+
+    <span class="k">def</span> <span class="nf">clear_queue</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">q</span><span class="p">:</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Queue</span><span class="p">):</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="n">q</span><span class="o">.</span><span class="n">empty</span><span class="p">():</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">q</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mf">0.001</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">queue</span><span class="o">.</span><span class="n">Empty</span><span class="p">:</span>
+                <span class="k">pass</span>
+        <span class="n">q</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">submit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fn</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncFuture</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Submit fn(*args, **kwargs) to be evaluated on a subprocess.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        fn: Callable</span>
+<span class="sd">            Function to call on a subprocess.</span>
+<span class="sd">        args</span>
+<span class="sd">            Positional arguments to call `fn` with.</span>
+<span class="sd">        kwargs</span>
+<span class="sd">            Keyword arguments to call `fn` with.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        AsyncFuture</span>
+<span class="sd">            A Future of which the `result` or `exception` field will be populated</span>
+<span class="sd">            once evaluation is finished.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">future</span> <span class="o">=</span> <span class="n">AsyncFuture</span><span class="p">(</span><span class="n">fn</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">futures</span><span class="p">[</span><span class="n">future</span><span class="o">.</span><span class="n">id</span><span class="p">]</span> <span class="o">=</span> <span class="n">future</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_input</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">future</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">job_queue_size</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">future</span>
+
+    <span class="k">def</span> <span class="nf">wait_next</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">poll_time</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AsyncFuture</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Wait until an AsyncFuture has been completed and return it.</span>
+
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        poll_time: float (default=0.05)</span>
+<span class="sd">            Time to sleep between checking if a future has been completed.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        AsyncFuture</span>
+<span class="sd">            The completed future that completed first.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        RuntimeError</span>
+<span class="sd">            If all futures have already been completed and returned.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">futures</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;No Futures queued, must call `submit` first.&quot;</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_control_memory_usage</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_log_memory_usage</span><span class="p">()</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">completed_future</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_output</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">block</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">job_queue_size</span> <span class="o">-=</span> <span class="mi">1</span>
+            <span class="k">except</span> <span class="n">queue</span><span class="o">.</span><span class="n">Empty</span><span class="p">:</span>
+                <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">poll_time</span><span class="p">)</span>
+                <span class="k">continue</span>
+
+            <span class="n">match</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">futures</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">completed_future</span><span class="o">.</span><span class="n">id</span><span class="p">)</span>
+            <span class="k">match</span><span class="o">.</span><span class="n">result</span><span class="p">,</span> <span class="n">match</span><span class="o">.</span><span class="n">exception</span><span class="p">,</span> <span class="n">match</span><span class="o">.</span><span class="n">traceback</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">completed_future</span><span class="o">.</span><span class="n">result</span><span class="p">,</span>
+                <span class="n">completed_future</span><span class="o">.</span><span class="n">exception</span><span class="p">,</span>
+                <span class="n">completed_future</span><span class="o">.</span><span class="n">traceback</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mem_behaved</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">return</span> <span class="n">match</span>
+
+    <span class="k">def</span> <span class="nf">_start_worker_process</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">:</span>
+        <span class="sd">&quot;&quot;&quot;Start a new worker node and add it to the process pool.&quot;&quot;&quot;</span>
+        <span class="n">mp_process</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Process</span><span class="p">(</span>
+            <span class="n">target</span><span class="o">=</span><span class="n">evaluator_daemon</span><span class="p">,</span>
+            <span class="n">args</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_input</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_output</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_command</span><span class="p">,</span> <span class="n">AsyncEvaluator</span><span class="o">.</span><span class="n">defaults</span><span class="p">),</span>
+            <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">mp_process</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="n">subprocess</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">(</span><span class="n">mp_process</span><span class="o">.</span><span class="n">pid</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">subprocess</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">subprocess</span>
+
+    <span class="k">def</span> <span class="nf">_stop_worker_process</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">process</span><span class="p">:</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Terminate a new worker node and remove it from the process pool.&quot;&quot;&quot;</span>
+        <span class="n">process</span><span class="o">.</span><span class="n">terminate</span><span class="p">()</span>
+        <span class="n">process</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">60</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">job_queue_size</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">process</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_control_memory_usage</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Dynamically restarts or kills processes to adhere to memory constraints.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_memory_limit_mb</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="c1"># If the memory usage of all processes (the main process, and the evaluation</span>
+        <span class="c1"># subprocesses) exceeds the maximum allowed memory usage, we have to terminate</span>
+        <span class="c1"># one of them.</span>
+        <span class="c1"># If we were never to start new processes, eventually all subprocesses would</span>
+        <span class="c1"># likely be killed due to &#39;silly&#39; pipelines (e.g. multiple polynomial feature</span>
+        <span class="c1"># steps).</span>
+        <span class="c1"># On the other hand if there is e.g. a big dataset, by always restarting we</span>
+        <span class="c1"># will set up the same scenario for failure over and over again.</span>
+        <span class="c1"># So we want to dynamically find the right amount of evaluation processes, such</span>
+        <span class="c1"># that the total memory usage is not exceeded &quot;too often&quot;.</span>
+        <span class="c1"># Here `threshold` defines the ratio of processes that should be allowed to</span>
+        <span class="c1"># fail due to memory constraints. Setting it too high might lead to aggressive</span>
+        <span class="c1"># subprocess killing and underutilizing compute resources. If it is too low,</span>
+        <span class="c1"># the number of concurrent jobs might shrink too slowly inducing a lot of</span>
+        <span class="c1"># loss in compute time due to interrupted evaluations.</span>
+        <span class="c1"># ! Like the rest of this module, I hate to use custom code with this,</span>
+        <span class="c1"># in particular there is a risk that terminating the process might leave</span>
+        <span class="c1"># the multiprocess queue broken.</span>
+        <span class="n">mem_proc</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_get_memory_usage</span><span class="p">())</span>
+        <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">mem_proc</span><span class="p">))</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">_memory_limit_mb</span><span class="p">:</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;GAMA exceeded memory usage &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_mem_violations</span><span class="si">}</span><span class="s2">, </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_mem_behaved</span><span class="si">}</span><span class="s2">).&quot;</span>
+            <span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_log_memory_usage</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mem_violations</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1"># Find the process with the most memory usage, that is not the main process</span>
+            <span class="n">proc</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">mem_proc</span><span class="p">[</span><span class="mi">1</span><span class="p">:],</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">t</span><span class="p">:</span> <span class="n">t</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">n_evaluations</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mem_violations</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mem_behaved</span>
+            <span class="n">fail_ratio</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mem_violations</span> <span class="o">/</span> <span class="n">n_evaluations</span>
+            <span class="k">if</span> <span class="n">fail_ratio</span> <span class="o">&lt;</span> <span class="n">threshold</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_processes</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># restart `pid`</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Terminating </span><span class="si">{</span><span class="n">proc</span><span class="o">.</span><span class="n">pid</span><span class="si">}</span><span class="s2"> due to memory usage.&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stop_worker_process</span><span class="p">(</span><span class="n">proc</span><span class="p">)</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Starting new evaluations process.&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_start_worker_process</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># More than one process left alive and a violation of the threshold,</span>
+                <span class="c1"># requires killing a subprocess.</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_mem_behaved</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_mem_violations</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Terminating </span><span class="si">{</span><span class="n">proc</span><span class="o">.</span><span class="n">pid</span><span class="si">}</span><span class="s2"> due to memory usage.&quot;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_stop_worker_process</span><span class="p">(</span><span class="n">proc</span><span class="p">)</span>
+            <span class="c1"># todo: update the Future of the evaluation that was terminated.</span>
+
+    <span class="k">def</span> <span class="nf">_log_memory_usage</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_logfile</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">mem_by_pid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_memory_usage</span><span class="p">()</span>
+        <span class="n">mem_str</span> <span class="o">=</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">proc</span><span class="o">.</span><span class="n">pid</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">mem_mb</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="p">(</span><span class="n">proc</span><span class="p">,</span> <span class="n">mem_mb</span><span class="p">)</span> <span class="ow">in</span> <span class="n">mem_by_pid</span><span class="p">])</span>
+        <span class="n">timestamp</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()</span>
+
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_logfile</span><span class="p">,</span> <span class="s2">&quot;a&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">memory_log</span><span class="p">:</span>
+            <span class="n">memory_log</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">timestamp</span><span class="si">}</span><span class="s2">,</span><span class="si">{</span><span class="n">mem_str</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_get_memory_usage</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">processes</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_main_process</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_processes</span>
+        <span class="k">for</span> <span class="n">process</span> <span class="ow">in</span> <span class="n">processes</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="n">process</span><span class="p">,</span> <span class="n">process</span><span class="o">.</span><span class="n">memory_info</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="mi">2</span><span class="o">**</span><span class="mi">20</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">NoSuchProcess</span><span class="p">:</span>
+                <span class="c1"># can never be the main process anyway</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_processes</span> <span class="o">=</span> <span class="p">[</span><span class="n">p</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_processes</span> <span class="k">if</span> <span class="n">p</span><span class="o">.</span><span class="n">pid</span> <span class="o">!=</span> <span class="n">process</span><span class="o">.</span><span class="n">pid</span><span class="p">]</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_start_worker_process</span><span class="p">()</span></div>
+
+
+<span class="k">def</span> <span class="nf">evaluator_daemon</span><span class="p">(</span>
+    <span class="n">input_queue</span><span class="p">:</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">,</span>
+    <span class="n">output_queue</span><span class="p">:</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">,</span>
+    <span class="n">command_queue</span><span class="p">:</span> <span class="n">queue</span><span class="o">.</span><span class="n">Queue</span><span class="p">,</span>
+    <span class="n">default_parameters</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Dict</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;Function for daemon subprocess that evaluates functions from AsyncFutures.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    input_queue: queue.Queue[AsyncFuture]</span>
+<span class="sd">        Queue to get AsyncFuture from.</span>
+<span class="sd">        Queue should be managed by multiprocessing.manager.</span>
+<span class="sd">    output_queue: queue.Queue[AsyncFuture]</span>
+<span class="sd">        Queue to put AsyncFuture to.</span>
+<span class="sd">        Queue should be managed by multiprocessing.manager.</span>
+<span class="sd">    command_queue: queue.Queue[Str]</span>
+<span class="sd">        Queue to put commands for the subprocess.</span>
+<span class="sd">        Queue should be managed by multiprocessing.manager.</span>
+<span class="sd">    default_parameters: Dict, optional (default=None)</span>
+<span class="sd">        Additional parameters to pass to AsyncFuture.Execute.</span>
+<span class="sd">        This is useful to avoid passing lots of repetitive data through AsyncFuture.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">command_queue</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">block</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">break</span>
+            <span class="k">except</span> <span class="n">queue</span><span class="o">.</span><span class="n">Empty</span><span class="p">:</span>
+                <span class="k">pass</span>
+
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">future</span> <span class="o">=</span> <span class="n">input_queue</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">block</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="n">future</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">default_parameters</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+                        <span class="n">result</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">result</span> <span class="o">=</span> <span class="n">future</span><span class="o">.</span><span class="n">result</span>
+                    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">error</span><span class="p">,</span> <span class="ne">MemoryError</span><span class="p">):</span>
+                        <span class="c1"># Can&#39;t pickle MemoryErrors. Should work around this later.</span>
+                        <span class="n">result</span><span class="o">.</span><span class="n">error</span> <span class="o">=</span> <span class="s2">&quot;MemoryError&quot;</span>
+                        <span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+                <span class="n">output_queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">future</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">MemoryError</span><span class="p">,</span> <span class="n">struct</span><span class="o">.</span><span class="n">error</span><span class="p">)</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">future</span><span class="o">.</span><span class="n">result</span> <span class="o">=</span> <span class="kc">None</span>
+                <span class="n">future</span><span class="o">.</span><span class="n">exception</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">))</span>
+                <span class="n">gc</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+                <span class="n">output_queue</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">future</span><span class="p">)</span>
+            <span class="k">except</span> <span class="n">queue</span><span class="o">.</span><span class="n">Empty</span><span class="p">:</span>
+                <span class="k">pass</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="c1"># There are no plans currently for recovering from any exception:</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Stopping daemon:</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2018-2022, Pieter Gijsbers.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
