@@ -9,6 +9,7 @@ Maintenance:
    - Drop support for Python 3.6 and 3.7
    - Add support for Python 3.10
  - Use pyproject.toml instead of setup.py
+ - Add CI check to ensure each PR adds to the changelog
 
 Bugfixes:
  - #137: raise an output if ``output_directory`` is non-empty.
