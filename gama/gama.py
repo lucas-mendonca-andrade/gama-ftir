@@ -555,6 +555,13 @@ class Gama(ABC):
                     if p.identifier not in [PolynomialFeatures]
                 ]
 
+        if self._time_manager.total_time_remaining < 0:
+            pre_time = self._time_manager.activities[-1].stopwatch.elapsed_time
+            raise RuntimeError(
+                f"Preprocessing took {pre_time} seconds. "
+                f"No time remaining (budget: {self._time_manager.total_time} seconds)."
+            )
+
         fit_time = int(
             (1 - self._post_processing.time_fraction)
             * self._time_manager.total_time_remaining
@@ -566,6 +573,14 @@ class Gama(ABC):
             activity_meta=[self._search_method.__class__.__name__],
         ):
             self._search_phase(warm_start, timeout=fit_time)
+
+        log.info("Best pipelines found in search:")
+        for i, evaluation in enumerate(
+            self._evaluation_library.n_best(5, with_pipelines=False)
+        ):
+            log.info(
+                f"{i}, {str(evaluation.individual._id)[:6]}: {evaluation.score}, {evaluation.individual.pipeline_str()}"  # noqa: E501
+            )
 
         with self._time_manager.start_activity(
             "postprocess",
@@ -587,9 +602,12 @@ class Gama(ABC):
                 self._time_manager.total_time_remaining,
                 best_individuals,
             )
+            log.info(f"Final model: {self.model}")
+
         if not self._store == "all":
             to_clean = dict(nothing="all", logs="evaluations", models="logs")
             self.cleanup(to_clean[self._store])
+
         return self
 
     def _search_phase(
