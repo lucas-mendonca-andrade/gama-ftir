@@ -343,8 +343,10 @@ class Gama(ABC):
         self, x: Union[pd.DataFrame, np.ndarray]
     ) -> pd.DataFrame:
         if isinstance(x, np.ndarray):
+            log.info("Converting prediction array to dataframe")
             x = self._np_to_matching_dataframe(x)
         if self._basic_encoding_pipeline:
+            log.info("Encoding the test data")
             x = self._basic_encoding_pipeline.transform(x)
         return x
 
