@@ -99,7 +99,8 @@ class GamaClassifier(Gama):
                     xc = step.transform(xc)
                 elif hasattr(step, "predict_proba"):
                     log.info(f"Creating probability predictions with {name}: {step}")
-                    return step.predict_proba(xc)
+                    step.predict_proba(xc)
+        log.info("Creating probability predictions with whole pipeline")
         return self.model.predict_proba(x)  # type: ignore
 
     def predict_proba(self, x: Union[pd.DataFrame, np.ndarray]):
