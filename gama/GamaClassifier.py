@@ -11,6 +11,12 @@ from gama.data_loading import X_y_from_file
 from gama.configuration.classification import clf_config
 from gama.utilities.metrics import scoring_to_metric
 
+from sklearn.pipeline import Pipeline
+
+import logging
+
+log = logging.getLogger(__name__)
+
 
 class GamaClassifier(Gama):
     """Gama with adaptations for (multi-class) classification."""
@@ -50,9 +56,22 @@ class GamaClassifier(Gama):
         numpy.ndarray
             Array with predictions of shape (N,) where N is len(X).
         """
-        y = self.model.predict(x)  # type: ignore
+        log.info("Creating predictions")
+
+        if isinstance(self.model, Pipeline):
+            xc = x.copy()
+            for name, step in self.model.steps:
+                if hasattr(step, "transform"):
+                    log.info(f"Transforming with {name}: {step}.")
+                    xc = step.transform(xc)
+                elif hasattr(step, "predict"):
+                    log.info(f"Creating predictions with {name}: {step}")
+                    y = step.predict(xc)
+        else:
+            y = self.model.predict(x)  # type: ignore
         # Decode the predicted labels - necessary only if ensemble is not used.
         if y[0] not in self._label_encoder.classes_:
+            log.info("Decoding class labels.")
             y = self._label_encoder.inverse_transform(y)
         return y
 
@@ -72,6 +91,15 @@ class GamaClassifier(Gama):
             Array of shape (N, K) with class probabilities where N is len(x),
              and K is the number of class labels found in `y` of `fit`.
         """
+        if isinstance(self.model, Pipeline):
+            xc = x.copy()
+            for name, step in self.model.steps:
+                if hasattr(step, "transform"):
+                    log.info(f"Transforming with {name}: {step}.")
+                    xc = step.transform(xc)
+                elif hasattr(step, "predict_proba"):
+                    log.info(f"Creating probability predictions with {name}: {step}")
+                    return step.predict_proba(xc)
         return self.model.predict_proba(x)  # type: ignore
 
     def predict_proba(self, x: Union[pd.DataFrame, np.ndarray]):
@@ -90,7 +118,9 @@ class GamaClassifier(Gama):
             Array of shape (N, K) with class probabilities where N is len(x),
              and K is the number of class labels found in `y` of `fit`.
         """
+        log.info("Preprocessing test data")
         x = self._prepare_for_prediction(x)
+        log.info("Predicting probabilities")
         return self._predict_proba(x)
 
     def predict_proba_from_file(
