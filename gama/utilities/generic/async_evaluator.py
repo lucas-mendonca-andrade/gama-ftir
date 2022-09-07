@@ -84,7 +84,8 @@ class AsyncEvaluator:
         if not AsyncEvaluator.provided_cluster:
             log.debug(f"Starting local cluster: {mem_limit=}, {self._n_jobs=}")
             self.cluster = LocalCluster(
-                threads_per_worker=self._n_jobs,
+                n_workers=self._n_jobs,
+                threads_per_worker=1,
                 processes=False,
                 memory_limit=mem_limit,
             )
