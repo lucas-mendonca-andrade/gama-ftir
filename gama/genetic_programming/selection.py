@@ -1,6 +1,6 @@
 """ Selection operators. """
 import random
-from typing import List
+from typing import List, Callable
 
 from gama.genetic_programming.operator_set import OperatorSet
 from gama.genetic_programming.components import Individual
@@ -18,7 +18,26 @@ def create_from_population(
 ) -> List[Individual]:
     """Creates n new individuals based on the population."""
     offspring = []
-    metrics = [lambda ind: ind.fitness.values[0], lambda ind: ind.fitness.values[1]]
+    
+    if not pop:
+        return offspring
+    
+    evaluated_individuals = [ind for ind in pop if ind.fitness is not None and ind.fitness.values]
+    
+    if evaluated_individuals:
+        num_objectives = len(evaluated_individuals[0].fitness.values)
+    else:
+        num_objectives = 1
+    
+    def make_metric(idx: int) -> Callable[[Individual], float]:
+        def metric(ind: Individual) -> float:
+            if ind.fitness and len(ind.fitness.values) > idx:
+                return ind.fitness.values[idx]
+            return float('-inf')
+        return metric
+    
+    metrics = [make_metric(i) for i in range(num_objectives)]
+    
     parent_pairs = nsga2_select(pop, n, metrics)
     for (ind1, ind2) in parent_pairs:
         if random.random() < cxpb and len(_valid_crossover_functions(ind1, ind2)) > 0:
