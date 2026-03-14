@@ -261,4 +261,4 @@ def _test_mutation(individual: Individual, mutation, mutation_check, pset):
     assert applied, message
 
     # Should be able to compile the individual, will raise an Exception if not.
-    compile_individual(ind_clone)
+    compile_individual(ind_clone, pset)

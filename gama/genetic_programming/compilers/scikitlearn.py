@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 import os
 import time
-from typing import Callable, Tuple, Optional, Sequence, Dict
+from typing import Callable, Tuple, Optional, Sequence
 
 import stopit
 from sklearn.base import TransformerMixin, is_classifier
@@ -23,22 +23,10 @@ from gama.genetic_programming.components import Individual, PrimitiveNode, Fitne
 log = logging.getLogger(__name__)
 
 
-def primitive_node_to_sklearn(
-    primitive_node: PrimitiveNode, parameter_checks: Optional[Dict[str, Callable]] = None
-) -> object:
+def primitive_node_to_sklearn(primitive_node: PrimitiveNode) -> object:
     hyperparameters = {
         terminal.output: terminal.value for terminal in primitive_node._terminals
     }
-    
-    if parameter_checks is not None:
-        primitive_name = primitive_node._primitive.identifier.__name__
-        if primitive_name in parameter_checks:
-            check_function = parameter_checks[primitive_name]
-            if not check_function(hyperparameters):
-                raise ValueError(
-                    f"Invalid hyperparameter combination for {primitive_name}: {hyperparameters}"
-                )
-    
     return primitive_node._primitive.identifier(**hyperparameters)
 
 
@@ -48,7 +36,7 @@ def compile_individual(
     preprocessing_steps: Sequence[Tuple[str, TransformerMixin]] = None,
 ) -> Pipeline:
     steps = [
-        (str(i), primitive_node_to_sklearn(primitive, parameter_checks=parameter_checks))
+        (str(i), primitive_node_to_sklearn(primitive))
         for i, primitive in enumerate(individual.primitives)
     ]
     if preprocessing_steps:
