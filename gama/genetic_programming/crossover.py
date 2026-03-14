@@ -6,7 +6,7 @@ from gama.genetic_programming.components import Individual
 
 
 def random_crossover(
-    ind1: Individual, ind2: Individual, max_length: Optional[int] = None
+    ind1: Individual, ind2: Individual, max_length: Optional[int] = None, unique_primitives: bool = False
 ) -> Tuple[Individual, Individual]:
     """Random valid crossover between two individuals in-place, if it can be done.
 
@@ -35,7 +35,29 @@ def random_crossover(
     crossover_choices = _valid_crossover_functions(ind1, ind2)
     if len(crossover_choices) == 0:
         raise ValueError(f"{ind1.pipeline_str()} and {ind2.pipeline_str()} can't mate.")
-    ind1, ind2 = random.choice(crossover_choices)(ind1, ind2)
+    
+    if unique_primitives:
+        valid_choices = []
+        for crossover_fn in crossover_choices:
+            ind1_copy = ind1.copy_as_new()
+            ind2_copy = ind2.copy_as_new()
+            try:
+                ind1_copy, ind2_copy = crossover_fn(ind1_copy, ind2_copy)
+                identifiers1 = [p._primitive.identifier for p in ind1_copy.primitives]
+                identifiers2 = [p._primitive.identifier for p in ind2_copy.primitives]
+                if len(identifiers1) == len(set(identifiers1)) and len(identifiers2) == len(set(identifiers2)):
+                    valid_choices.append(crossover_fn)
+            except Exception:
+                pass
+        
+        if not valid_choices:
+            return ind1, ind2
+        
+        crossover_fn = random.choice(valid_choices)
+    else:
+        crossover_fn = random.choice(crossover_choices)
+    
+    ind1, ind2 = crossover_fn(ind1, ind2)
 
     if max_length is not None and len(ind1.primitives) > max_length:
         return ind2, ind1

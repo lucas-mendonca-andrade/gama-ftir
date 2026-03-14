@@ -36,7 +36,7 @@ def mut_replace_terminal(individual: Individual, primitive_set: dict) -> None:
     individual.replace_terminal(terminal_index, new_terminal)
 
 
-def mut_replace_primitive(individual: Individual, primitive_set: dict) -> None:
+def mut_replace_primitive(individual: Individual, primitive_set: dict, unique_primitives: bool = False) -> None:
     """Mutates an Individual in-place by replacing one of its Primitives.
 
     Parameters
@@ -44,6 +44,8 @@ def mut_replace_primitive(individual: Individual, primitive_set: dict) -> None:
     individual: Individual
         Individual to mutate in-place.
     primitive_set: dict
+    unique_primitives: bool (default=False)
+        If True, prevent using primitives that already exist in the individual.
     """
 
     def primitive_replaceable(index_primitive):
@@ -55,11 +57,22 @@ def mut_replace_primitive(individual: Individual, primitive_set: dict) -> None:
         raise ValueError("Individual has no primitives suitable for replacement.")
 
     primitive_index, old_primitive_node = random.choice(primitives)
-    primitive_node = random_primitive_node(
-        output_type=old_primitive_node._primitive.output,
-        primitive_set=primitive_set,
-        exclude=old_primitive_node._primitive,
-    )
+    
+    exclude_list = None
+    if unique_primitives:
+        used_identifiers = [p._primitive.identifier for p in individual.primitives if p != old_primitive_node]
+        exclude_list = [p for p in primitive_set[old_primitive_node._primitive.output] 
+                       if p.identifier in used_identifiers]
+    
+    try:
+        primitive_node = random_primitive_node(
+            output_type=old_primitive_node._primitive.output,
+            primitive_set=primitive_set,
+            exclude=old_primitive_node._primitive,
+            exclude_list=exclude_list,
+        )
+    except ValueError:
+        return
     individual.replace_primitive(primitive_index, primitive_node)
 
 
@@ -95,7 +108,7 @@ def mut_shrink(
     current_primitive_node._data_node = DATA_TERMINAL
 
 
-def mut_insert(individual: Individual, primitive_set: dict) -> None:
+def mut_insert(individual: Individual, primitive_set: dict, unique_primitives: bool = False) -> None:
     """Mutate an Individual in-place by inserting a PrimitiveNode at a random location.
 
     The new PrimitiveNode will not be inserted as root node.
@@ -105,17 +118,25 @@ def mut_insert(individual: Individual, primitive_set: dict) -> None:
     individual: Individual
         Individual to mutate in-place.
     primitive_set: dict
+    unique_primitives: bool (default=False)
+        If True, prevent using primitives that already exist in the individual.
     """
     parent_node = random.choice(list(individual.primitives))
+    
+    exclude_list = None
+    if unique_primitives:
+        used_identifiers = [p._primitive.identifier for p in individual.primitives]
+        exclude_list = [p for p in primitive_set[DATA_TERMINAL] if p.identifier in used_identifiers]
+    
     new_primitive_node = random_primitive_node(
-        output_type=DATA_TERMINAL, primitive_set=primitive_set
+        output_type=DATA_TERMINAL, primitive_set=primitive_set, exclude_list=exclude_list
     )
     new_primitive_node._data_node = parent_node._data_node
     parent_node._data_node = new_primitive_node
 
 
 def random_valid_mutation_in_place(
-    individual: Individual, primitive_set: dict, max_length: Optional[int] = None
+    individual: Individual, primitive_set: dict, max_length: Optional[int] = None, unique_primitives: bool = False
 ) -> Callable:
     """Apply a random valid mutation in place.
 
@@ -152,10 +173,10 @@ def random_valid_mutation_in_place(
             lambda p: len(primitive_set[p._primitive.output]) > 1, individual.primitives
         )
         if len(list(replaceable_primitives)) > 1:
-            available_mutations.append(mut_replace_primitive)
+            available_mutations.append(partial(mut_replace_primitive, unique_primitives=unique_primitives))
 
         if max_length is None or n_primitives < max_length:
-            available_mutations.append(mut_insert)
+            available_mutations.append(partial(mut_insert, unique_primitives=unique_primitives))
         if n_primitives > 1:
             available_mutations.append(mut_shrink)
 
