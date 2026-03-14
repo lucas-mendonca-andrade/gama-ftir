@@ -76,7 +76,8 @@ class OperatorSet:
         def mutate_with_log():
             new_individual = ind.copy_as_new()
             mutator = self._mutate(new_individual, *args, **kwargs)
-            new_individual.meta = dict(parents=[ind._id], origin=mutator.__name__)
+            mutator_name = mutator.func.__name__ if hasattr(mutator, 'func') else mutator.__name__
+            new_individual.meta = dict(parents=[ind._id], origin=mutator_name)
             return new_individual
 
         return self.try_until_new(mutate_with_log)

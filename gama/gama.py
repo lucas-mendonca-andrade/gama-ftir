@@ -85,6 +85,7 @@ class Gama(ABC):
             str, Metric, Iterable[str], Iterable[Metric]
         ] = "filled_in_by_child_class",
         regularize_length: bool = True,
+        unique_primitives: bool = False,
         max_pipeline_length: Optional[int] = None,
         config: Dict[Union[str, object], Any] = {},
         random_state: Optional[int] = None,
@@ -111,6 +112,10 @@ class Gama(ABC):
         regularize_length: bool (default=True)
             If True, add pipeline length as an optimization metric.
             Short pipelines should then be preferred over long ones.
+
+        unique_primitives: bool (default=False)
+            If True, prevent the same primitive from appearing more than once in a pipeline.
+            When enabled, each preprocessing technique and estimator can only be used once per pipeline.
 
         max_pipeline_length: int, optional (default=None)
             If set, limit the maximum number of steps in any evaluated pipeline.
@@ -241,6 +246,7 @@ class Gama(ABC):
         self._time_manager = TimeKeeper(max_total_time)
         self._metrics: Tuple[Metric, ...] = scoring_to_metric(scoring)
         self._regularize_length = regularize_length
+        self._unique_primitives = unique_primitives
         self._search_method: BaseSearch = search
         self._post_processing = post_processing
         self._store = store
@@ -293,13 +299,15 @@ class Gama(ABC):
                 random_valid_mutation_in_place,
                 primitive_set=self._pset,
                 max_length=max_pipeline_length,
+                unique_primitives=unique_primitives,
             ),
-            mate=partial(random_crossover, max_length=max_pipeline_length),
+            mate=partial(random_crossover, max_length=max_pipeline_length, unique_primitives=unique_primitives),
             create_from_population=partial(create_from_population, cxpb=0.2, mutpb=0.8),
             create_new=partial(
                 create_random_expression,
                 primitive_set=self._pset,
                 max_length=max_start_length,
+                unique_primitives=unique_primitives,
             ),
             compile_=partial(compile_individual, parameter_checks=parameter_checks),
             eliminate=eliminate_from_pareto,
