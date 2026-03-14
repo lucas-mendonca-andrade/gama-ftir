@@ -34,6 +34,11 @@ from sklearn.svm import LinearSVR
 # For comparison, this selection of operators and hyperparameters is
 # currently most of what TPOT supports.
 
+
+def check_featureagglomeration_params(params):
+    return (not params["linkage"] == "ward") or params["affinity"] == "euclidean"
+
+
 reg_config = {
     ElasticNetCV: {
         "l1_ratio": np.arange(0.0, 1.01, 0.05),
@@ -97,10 +102,7 @@ reg_config = {
     FeatureAgglomeration: {
         "linkage": ["ward", "complete", "average"],
         "affinity": ["euclidean", "l1", "l2", "manhattan", "cosine", "precomputed"],
-        "param_check": [
-            lambda params: (not params["linkage"] == "ward")
-            or params["affinity"] == "euclidean"
-        ],
+        "param_check": [check_featureagglomeration_params],
     },
     MaxAbsScaler: {},
     MinMaxScaler: {},

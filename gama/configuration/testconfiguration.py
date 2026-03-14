@@ -29,7 +29,21 @@ from sklearn.feature_selection import (
     VarianceThreshold,
 )
 
-# A configuration with limited operators for unit tests.
+
+def check_linearsvc_params(params):
+    return (not params["dual"] or params["penalty"] == "l2") and not (
+        params["penalty"] == "l1" and params["loss"] == "hinge"
+    ) and not (params["penalty"] == "l2" and params["loss"] == "hinge" and not params["dual"])
+
+
+def check_logisticregression_params_test(params):
+    return not params["dual"] or params["penalty"] == "l2"
+
+
+def check_featureagglomeration_params(params):
+    return (not params["linkage"] == "ward") or params["affinity"] == "euclidean"
+
+
 
 clf_config = {
     "alpha": [1e-3, 1e-2, 1e-1, 1.0, 10.0, 100.0],
@@ -82,21 +96,13 @@ clf_config = {
         "dual": [False, True],
         "tol": [1e-5, 1e-4, 1e-3, 1e-2, 1e-1],
         "C": [1e-4, 1e-3, 1e-2, 1e-1, 0.5, 1.0, 5.0, 10.0, 15.0, 20.0, 25.0],
-        "param_check": [
-            lambda params: (not params["dual"] or params["penalty"] == "l2")
-            and not (params["penalty"] == "l1" and params["loss"] == "hinge")
-            and not (
-                params["penalty"] == "l2"
-                and params["loss"] == "hinge"
-                and not params["dual"]
-            )
-        ],
+        "param_check": [check_linearsvc_params],
     },
     LogisticRegression: {
         "penalty": ["l1", "l2"],
         "C": [1e-4, 1e-3, 1e-2, 1e-1, 0.5, 1.0, 5.0, 10.0, 15.0, 20.0, 25.0],
         "dual": [False, True],
-        "param_check": [lambda params: not params["dual"] or params["penalty"] == "l2"],
+        "param_check": [check_logisticregression_params_test],
     },
     # Preprocesssors
     Binarizer: {"threshold": np.arange(0.0, 1.01, 0.05)},
@@ -107,10 +113,7 @@ clf_config = {
     FeatureAgglomeration: {
         "linkage": ["ward", "complete", "average"],
         "affinity": ["euclidean", "l1", "l2", "manhattan", "cosine", "precomputed"],
-        "param_check": [
-            lambda params: (not params["linkage"] == "ward")
-            or params["affinity"] == "euclidean"
-        ],
+        "param_check": [check_featureagglomeration_params],
     },
     MaxAbsScaler: {},
     MinMaxScaler: {},
