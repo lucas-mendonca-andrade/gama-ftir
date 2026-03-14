@@ -273,6 +273,7 @@ class Gama(ABC):
         self.evaluation_completed(e.log_evaluation)
 
         self._pset, parameter_checks = pset_from_config(config)
+        self._parameter_checks = parameter_checks
 
         if DATA_TERMINAL not in self._pset:
             if max_pipeline_length is None:
@@ -300,7 +301,7 @@ class Gama(ABC):
                 primitive_set=self._pset,
                 max_length=max_start_length,
             ),
-            compile_=compile_individual,
+            compile_=partial(compile_individual, parameter_checks=parameter_checks),
             eliminate=eliminate_from_pareto,
             evaluate_callback=self._on_evaluation_completed,
             completed_evaluations=self._evaluation_library.lookup,
