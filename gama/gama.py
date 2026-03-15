@@ -87,6 +87,7 @@ class Gama(ABC):
         regularize_length: bool = True,
         unique_primitives: bool = False,
         max_pipeline_length: Optional[int] = None,
+        cv: int = 5,
         config: Dict[Union[str, object], Any] = {},
         random_state: Optional[int] = None,
         max_total_time: int = 3600,
@@ -120,6 +121,10 @@ class Gama(ABC):
         max_pipeline_length: int, optional (default=None)
             If set, limit the maximum number of steps in any evaluated pipeline.
             Encoding and imputation are excluded.
+
+        cv: int (default=5)
+            Number of folds to use for cross-validation during pipeline evaluation.
+            Each pipeline candidate is evaluated using k-fold cross-validation on the training data.
 
         config: Dict
             Specifies available components and their valid hyperparameter settings.
@@ -247,6 +252,7 @@ class Gama(ABC):
         self._metrics: Tuple[Metric, ...] = scoring_to_metric(scoring)
         self._regularize_length = regularize_length
         self._unique_primitives = unique_primitives
+        self._cv = cv
         self._search_method: BaseSearch = search
         self._post_processing = post_processing
         self._store = store
@@ -612,6 +618,7 @@ class Gama(ABC):
             x=self._x,
             y_train=self._y,
             metrics=self._metrics,
+            cv=self._cv,
         )
         AsyncEvaluator.defaults = dict(evaluate_pipeline=evaluate_pipeline)
 
