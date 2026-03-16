@@ -253,6 +253,7 @@ class Gama(ABC):
         self._regularize_length = regularize_length
         self._unique_primitives = unique_primitives
         self._cv = cv
+        self._max_pipeline_length = max_pipeline_length
         self._search_method: BaseSearch = search
         self._post_processing = post_processing
         self._store = store
@@ -627,6 +628,8 @@ class Gama(ABC):
             timeout=self._max_eval_time,
             deadline=deadline,
             add_length_to_score=self._regularize_length,
+            max_pipeline_length=self._max_pipeline_length,
+            metrics=self._metrics,
         )
 
         try:
