@@ -177,6 +177,8 @@ def evaluate_individual(
     timeout: float = 1e6,
     deadline: Optional[float] = None,
     add_length_to_score: bool = True,
+    max_pipeline_length: Optional[int] = None,
+    metrics: Optional[Tuple[Metric, ...]] = None,
     **kwargs,
 ) -> Evaluation:
     """Evaluate the pipeline specified by individual, and record
@@ -197,6 +199,12 @@ def evaluate_individual(
         Cut off evaluation at `deadline` even if `timeout` seconds have not yet elapsed.
     add_length_to_score: bool (default=True)
         Add the length of the individual to the score result of the evaluation.
+    max_pipeline_length: int, optional (default=None)
+        Maximum allowed pipeline length. If set and individual exceeds this length,
+        evaluation is skipped and an error is returned.
+    metrics: Tuple[Metric, ...], optional (default=None)
+        Metrics used for evaluation. Required to determine the number of score values
+        when max_pipeline_length validation fails.
     **kwargs: Dict, optional (default=None)
         Passed to `evaluate_pipeline` function.
 
@@ -207,6 +215,21 @@ def evaluate_individual(
     """
     result = Evaluation(individual, pid=os.getpid())
     result.start_time = datetime.now()
+
+    if max_pipeline_length is not None:
+        pipeline_length = len(list(individual.primitives))
+        if pipeline_length > max_pipeline_length:
+            num_metrics = len(metrics) if metrics is not None else 1
+            result.error = f"Pipeline length ({pipeline_length}) exceeds max_pipeline_length ({max_pipeline_length})"
+            result.score = tuple([float("-inf")] * num_metrics)
+            result.duration = 0.0
+            individual.fitness = Fitness(
+                result.score,
+                result.start_time,
+                0.0,
+                0.0,
+            )
+            return result
 
     if deadline is not None:
         time_to_deadline = deadline - time.time()
