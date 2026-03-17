@@ -189,4 +189,10 @@ def random_valid_mutation_in_place(
     mut_fn = random.choice(available_mutations)
     mut_fn(individual, primitive_set)
 
+    if max_length is not None:
+        n_primitives = len(list(individual.primitives))
+        if n_primitives > max_length and n_primitives > 1:
+            shrink_by = n_primitives - max_length
+            mut_shrink(individual, primitive_set, shrink_by=shrink_by)
+
     return mut_fn
