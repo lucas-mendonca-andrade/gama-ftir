@@ -57,10 +57,19 @@ def random_crossover(
     else:
         crossover_fn = random.choice(crossover_choices)
     
+    ind1_original = ind1.copy_as_new()
+    ind2_original = ind2.copy_as_new()
     ind1, ind2 = crossover_fn(ind1, ind2)
 
-    if max_length is not None and len(ind1.primitives) > max_length:
-        return ind2, ind1
+    if max_length is not None:
+        len1 = len(ind1.primitives)
+        len2 = len(ind2.primitives)
+        if len1 > max_length and len2 > max_length:
+            return ind1_original, ind2_original
+        elif len1 > max_length:
+            return ind2, ind1
+        elif len2 > max_length:
+            return ind1, ind2
     return ind1, ind2
 
 
