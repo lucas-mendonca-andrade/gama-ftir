@@ -285,8 +285,9 @@ class Gama(ABC):
         e = search.logger(os.path.join(self.output_directory, "evaluations.log"))
         self.evaluation_completed(e.log_evaluation)
 
-        self._pset, parameter_checks = pset_from_config(config)
+        self._pset, parameter_checks, mandatory_primitives = pset_from_config(config)
         self._parameter_checks = parameter_checks
+        self._mandatory_primitives = mandatory_primitives
 
         if DATA_TERMINAL not in self._pset:
             if max_pipeline_length is None:
@@ -316,7 +317,11 @@ class Gama(ABC):
                 max_length=max_start_length,
                 unique_primitives=unique_primitives,
             ),
-            compile_=partial(compile_individual, parameter_checks=parameter_checks),
+            compile_=partial(
+                compile_individual,
+                parameter_checks=parameter_checks,
+                mandatory_primitives=mandatory_primitives,
+            ),
             eliminate=eliminate_from_pareto,
             evaluate_callback=self._on_evaluation_completed,
             completed_evaluations=self._evaluation_library.lookup,
