@@ -1,3 +1,4 @@
+import pytest
 import pandas as pd
 from sklearn.datasets import load_iris
 from gama.genetic_programming.compilers.scikitlearn import (
@@ -27,6 +28,19 @@ def test_evaluate_individual(SS_BNB):
     assert hasattr(individual, "fitness")
     assert individual.fitness.values == (1.0, -2)
     assert (individual.fitness.start_time - reported_start_time).total_seconds() < 1.0
+
+
+def test_compile_individual_respects_mandatory_primitives(SS_BNB):
+    pipeline = compile_individual(
+        SS_BNB,
+        mandatory_primitives=frozenset({"BernoulliNB", "StandardScaler"}),
+    )
+    assert pipeline is not None
+
+
+def test_compile_individual_missing_mandatory_raises(SS_BNB):
+    with pytest.raises(ValueError, match="Missing"):
+        compile_individual(SS_BNB, mandatory_primitives=frozenset({"PCA"}))
 
 
 def test_compile_individual(SS_BNB):

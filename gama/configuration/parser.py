@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Dict, Any, Union, List, Callable, Tuple
+from typing import Dict, Any, Union, List, Callable, Tuple, FrozenSet
 
 import sklearn
 
@@ -8,7 +8,7 @@ from gama.genetic_programming.components import Primitive, Terminal, DATA_TERMIN
 
 def pset_from_config(
     configuration: Dict[Union[str, object], Any]
-) -> Tuple[Dict[str, List], Dict[str, Callable]]:
+) -> Tuple[Dict[str, List], Dict[str, Callable], FrozenSet[str]]:
     """Create a pset for the given configuration dictionary.
 
     Given a configuration dictionary specifying operators (e.g. sklearn
@@ -25,10 +25,13 @@ def pset_from_config(
             maps return-types to a list of Primitives and/or Terminals
         parameter_check - Dict[str, Callable]:
             maps Primitive name to a check for the validity of the hp configuration
+        mandatory_primitives - FrozenSet[str]:
+            class names (__name__) of primitives that must appear in every pipeline
     """
 
     pset: Dict[str, List[Union[Primitive, Terminal]]] = defaultdict(list)
     parameter_checks = {}
+    mandatory_primitives: List[str] = []
 
     # Make sure the str-keys are evaluated first, they describe shared hyperparameters.
     # Order-preserving dictionaries are not in the Python 3.6 specification.
@@ -54,6 +57,13 @@ def pset_from_config(
                     # This allows users to define illegal hyperparameter combinations,
                     # but is not a terminal.
                     parameter_checks[key.__name__] = param_values[0]
+                elif name == "mandatory":
+                    if param_values != [True]:
+                        raise ValueError(
+                            f"Primitive {key.__name__}: 'mandatory' must be exactly [True], "
+                            f"got {param_values!r}."
+                        )
+                    mandatory_primitives.append(key.__name__)
                 else:
                     hp_name = f"{key.__name__}.{name}"
                     hyperparameter_types.append(hp_name)
@@ -103,7 +113,7 @@ def pset_from_config(
                 "Keys in the configuration should be str or class."
             )
 
-    return pset, parameter_checks
+    return pset, parameter_checks, frozenset(mandatory_primitives)
 
 
 def merge_configurations(c1: Dict, c2: Dict) -> Dict:

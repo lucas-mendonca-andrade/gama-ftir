@@ -2,7 +2,7 @@ from datetime import datetime
 import logging
 import os
 import time
-from typing import Callable, Tuple, Optional, Sequence, Dict
+from typing import Callable, Collection, Tuple, Optional, Sequence, Dict
 
 import stopit
 from sklearn.base import TransformerMixin, is_classifier
@@ -42,11 +42,28 @@ def primitive_node_to_sklearn(
     return primitive_node._primitive.identifier(**hyperparameters)
 
 
+def _ensure_mandatory_primitives(
+    individual: Individual,
+    mandatory_primitives: Optional[Collection[str]] = None,
+) -> None:
+    if not mandatory_primitives:
+        return
+    present = {p._primitive.identifier.__name__ for p in individual.primitives}
+    missing = frozenset(mandatory_primitives) - present
+    if missing:
+        raise ValueError(
+            "Pipeline must include every mandatory primitive "
+            f"{sorted(mandatory_primitives)}. Missing: {sorted(missing)}."
+        )
+
+
 def compile_individual(
     individual: Individual,
     parameter_checks=None,
     preprocessing_steps: Sequence[Tuple[str, TransformerMixin]] = None,
+    mandatory_primitives: Optional[Collection[str]] = None,
 ) -> Pipeline:
+    _ensure_mandatory_primitives(individual, mandatory_primitives)
     steps = [
         (str(i), primitive_node_to_sklearn(primitive, parameter_checks=parameter_checks))
         for i, primitive in enumerate(individual.primitives)

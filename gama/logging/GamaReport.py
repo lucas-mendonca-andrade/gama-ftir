@@ -10,7 +10,7 @@ from gama.configuration.regression import reg_config
 from gama.genetic_programming.components import Individual
 
 
-pset, _ = pset_from_config(merge_configurations(clf_config, reg_config))
+pset, _, _ = pset_from_config(merge_configurations(clf_config, reg_config))
 
 
 class GamaReport:
